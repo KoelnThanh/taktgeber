@@ -1,0 +1,8 @@
+# takt.nthanh.de – statisch, kein Build-Schritt
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/stimme/*"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"

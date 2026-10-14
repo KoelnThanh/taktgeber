@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Intervall-Timer für Kettlebell-EMOM, Dehnen und Bewegungspausen, mit Sprachansagen. Läuft im Browser.">
+<meta name="theme-color" content="#0A0A0A">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<title>Taktgeber</title>
+<link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+/* Stil Gold & Schwarz (wie nthanh.de): oben das schwarze Bühnen-Band mit der Uhr, darunter das helle Band zum Einstellen.
+   Ein einziges Erscheinungsbild, kein Dark Mode. Die Vorlagen behalten ihre Hantelscheiben-Farbe nur als Punkt. */
+:root {
+  --ink: #0A0A0A; --char: #1A1816; --line-d: #34302B;
+  --cream: #F5F0EB; --sand: #E8E0D8; --line-l: #CFC6BC;
+  --gold: #D4A03A; --gold-hi: #E9C27A; --gold-lo: #9A6410; --amber: #C47F17; --stone: #8A8178;
+  --grad: radial-gradient(120% 90% at 55% 35%, #F7E6C2 0%, var(--gold-hi) 38%, var(--gold) 70%, var(--amber) 100%);
+  --plate-red: #C8402F; --plate-blue: #3E72B0; --plate-yellow: var(--gold); --plate-green: #3B8F5A; --plate-white: var(--cream);
+  --f-disp: "Archivo", "Arial Narrow", "Segoe UI", sans-serif;
+  --f-serif: "Playfair Display", Georgia, serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --gut: clamp(16px, 4vw, 48px);
+  color-scheme: light;
+}
+* { box-sizing: border-box }
+body { margin: 0; background: var(--ink); color: var(--cream); font: 400 1rem/1.55 var(--f-disp); -webkit-font-smoothing: antialiased; }
+h1, h2, p { margin: 0 }
+em { font-family: var(--f-serif); font-style: italic; font-weight: 400; }
+.band { padding-inline: var(--gut); }
+.in { max-width: 1240px; margin-inline: auto; }
+.cap { font: 500 .7rem/1.4 var(--f-mono); text-transform: uppercase; letter-spacing: .12em; }
+.giant { font-family: var(--f-disp); font-stretch: 62%; font-weight: 900; text-transform: uppercase; line-height: .82; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.setup-band :focus-visible { outline-color: var(--ink); }
+
+/* ---------- Bühne (schwarz) ---------- */
+.stage .in { display: grid; gap: 12px; padding-block: 12px 20px; }
+.top { display: flex; justify-content: space-between; align-items: end; gap: 12px 24px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid var(--line-d); }
+.top h1 { font-size: clamp(2.2rem, 5vw, 3.6rem);
+  background: linear-gradient(180deg, var(--gold-hi) 10%, var(--gold) 55%, var(--amber) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.top p { color: #B5ADA4; max-width: 34ch; font-size: .88rem; line-height: 1.45; }
+
+.presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 10px; border: 1px solid var(--line-d);
+  background: var(--char); color: var(--cream); font: 500 .9rem var(--f-disp); cursor: pointer; transition: border-color .2s, background .2s; }
+.chip:hover:not(:disabled) { border-color: var(--stone); }
+.chip .disc { width: 12px; height: 12px; border-radius: 50%; border: 3px solid var(--c); }
+.chip small { font: 400 .7rem var(--f-mono); color: var(--stone); letter-spacing: .04em; }
+.chip[aria-pressed="true"] { border-color: var(--gold); box-shadow: inset 0 -3px 0 var(--gold); }
+.chip[aria-pressed="true"] small { color: var(--gold-hi); }
+.chip:disabled { opacity: .45; cursor: default }
+
+.clock { display: grid; gap: 10px; justify-items: center; align-content: center; text-align: center; padding-block: 8px; }
+.phase { font: 500 .8rem/1.4 var(--f-mono); text-transform: uppercase; letter-spacing: .16em; color: var(--gold); min-height: 1.4em; }
+.digits { font: 900 clamp(6rem, 30vw, 15rem)/.8 var(--f-disp); font-stretch: 62%; font-variant-numeric: tabular-nums; letter-spacing: -.01em; color: var(--cream); transition: color .25s; }
+.digits.lang { font-size: clamp(4.4rem, 21vw, 11rem); }
+.digits.pre, .digits.final { color: var(--gold); }
+.bar { width: min(100%, 760px); height: 6px; background: var(--line-d); overflow: hidden; }
+.bar-fill { height: 100%; width: 0; background: var(--grad); transition: width .1s linear; }
+.pips { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; min-height: 16px; max-width: 760px; }
+.pip { width: 8px; height: 16px; border: 1px solid var(--line-d); transition: background .2s, border-color .2s; }
+.pip.done { background: var(--gold); border-color: var(--gold) }
+.pip.akt { border-color: var(--gold-hi); box-shadow: inset 0 0 0 1px var(--gold-hi); }
+.next { font: 700 1.25rem/1.1 var(--f-disp); font-stretch: 80%; text-transform: uppercase; min-height: 1.1em; }
+.next:empty { display: none; }
+.next span { display: block; font: 500 .68rem/1.6 var(--f-mono); letter-spacing: .12em; color: var(--stone); }
+.meta { font: 400 .78rem/1.5 var(--f-mono); color: #B5ADA4; font-variant-numeric: tabular-nums; }
+.controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
+button.btn { font: 600 .9rem var(--f-disp); padding: 9px 16px; border: 1px solid var(--line-d); background: transparent; color: var(--cream); cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+button.btn:hover:not(:disabled) { border-color: var(--cream); }
+button.btn.primary { background: var(--grad); border: 0; color: var(--ink); min-width: 180px; padding: 12px 24px;
+  font: 900 1.4rem/1 var(--f-disp); font-stretch: 62%; text-transform: uppercase; letter-spacing: .03em; }
+button.btn.primary:hover { filter: brightness(1.06); }
+.stage .hint { font: 400 .7rem/1.5 var(--f-mono); color: var(--stone); max-width: 52ch; }
+
+/* ---------- Einstellen (hell) ---------- */
+.setup-band { background: var(--cream); color: var(--ink); padding-block: clamp(24px, 3vw, 40px); }
+.kopf { display: flex; justify-content: space-between; align-items: end; gap: 8px 24px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 2px solid var(--ink); margin-bottom: 4px; }
+.kopf h2 { font-size: clamp(2rem, 5vw, 3.4rem); }
+.kopf .cap { color: var(--gold-lo); }
+.setup { display: grid; gap: 0 clamp(24px, 4vw, 56px); }
+@media (min-width: 860px) { .setup { grid-template-columns: 1fr 1fr; } .setup fieldset.weit { grid-column: 1 / -1; } }
+@media (min-width: 1180px) { .setup { grid-template-columns: repeat(4, 1fr); } }
+fieldset { margin: 0; border: 0; border-bottom: 1px solid var(--line-l); padding: 16px 0 16px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+legend { float: left; width: 100%; padding: 0; margin-bottom: 4px; font: 900 1.35rem/1 var(--f-disp); font-stretch: 62%; text-transform: uppercase; }
+legend + * { clear: both; }
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+label { display: grid; gap: 3px; font-size: .85rem; color: #5E5750; }
+.toggle { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: .98rem; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; margin: 0; accent-color: var(--gold-lo); }
+input[type="number"], input[type="text"], select, textarea { font: 400 .95rem var(--f-disp); color: var(--ink); background: #FBF8F4; border: 1px solid var(--line-l); border-radius: 0; padding: 6px 9px; width: 100%; font-variant-numeric: tabular-nums; }
+input:hover, select:hover, textarea:hover { border-color: var(--stone); }
+textarea { font: .88rem/1.5 var(--f-mono); resize: vertical; }
+input:disabled, select:disabled, textarea:disabled { opacity: .55; }
+input[type="range"] { accent-color: var(--gold-lo); }
+.dur { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+.dur input { width: 4.8em }
+.save { display: flex; gap: 8px; flex-wrap: wrap; }
+.save input { flex: 1 1 180px; width: auto }
+.setup-band button.btn { border-color: var(--ink); color: var(--ink); }
+.setup-band button.btn:hover:not(:disabled) { background: var(--gold-hi); border-color: var(--ink); }
+.setup-band button.btn:disabled { opacity: .45; cursor: default; }
+.setup-band .hint { font-size: .85rem; color: #5E5750; }
+code { font: .82em var(--f-mono); background: var(--sand); padding: 1px 5px; }
+@media (max-width: 520px) {
+  .stage .in { gap: 14px; }
+  .chip { padding: 8px 11px 8px 10px; font-size: .9rem; }
+  button.btn.primary { min-width: 0; flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .bar-fill, .digits, .pip, .chip, button.btn { transition: none } }
+</style>
+</head>
+<body>
+
+<main>
+  <section class="band stage">
+    <div class="in">
+      <header class="top">
+        <h1 class="giant">Taktgeber</h1>
+        <p>Intervall-Timer mit Sprachansage für Kettlebell, Deadhang, Dehnen, Faszien und <em>Fokuszeit.</em></p>
+      </header>
+
+      <nav class="presets" id="presets" aria-label="Vorlagen"></nav>
+
+      <section class="clock" aria-live="polite">
+        <div class="phase" id="phase">Bereit</div>
+        <div class="digits" id="digits">01:00</div>
+        <div class="bar" aria-hidden="true"><div class="bar-fill" id="barFill"></div></div>
+        <div class="pips" id="pips" aria-hidden="true"></div>
+        <div class="next" id="next"></div>
+        <div class="meta" id="meta"></div>
+        <div class="controls">
+          <button class="btn primary" id="btnStart" type="button">Start</button>
+          <button class="btn" id="btnSkip" type="button" hidden>Überspringen</button>
+          <button class="btn" id="btnStop" type="button" hidden>Stopp</button>
+        </div>
+        <p class="hint">Leertaste: Start/Pause. Seite offen lassen und Handy nicht sperren, sonst können Ansagen ausbleiben. Der Bildschirm bleibt während des Laufs an. Ansagen: KI-Stimme.</p>
+      </section>
+    </div>
+  </section>
+
+  <section class="band setup-band">
+    <div class="in">
+      <div class="kopf">
+        <h2 class="giant">Einstellen</h2>
+        <span class="cap">Takt · Countdown · Ansagen · Ton</span>
+      </div>
+
+      <form class="setup" id="setup" autocomplete="off">
+        <fieldset class="weit">
+          <legend>Takt</legend>
+          <div class="row">
+            <label>Intervall
+              <span class="dur"><input type="number" id="fMin" min="0" max="240" step="1"> min
+              <input type="number" id="fSec" min="0" max="59" step="5"> s</span>
+            </label>
+            <label>Runden (0 = endlos)
+              <input type="number" id="fRounds" min="0" max="999" step="1">
+            </label>
+          </div>
+          <label><span>Ablauf je Runde (optional): eine Zeile je Abschnitt, <code>Name | Sekunden | Ansage</code></span>
+            <textarea id="fSteps" rows="3" spellcheck="false" placeholder="Swings | 60 | Swings&#10;Goblet Squat | 60 | Goblet Squat"></textarea>
+          </label>
+          <p class="hint" id="stepsInfo">Leer lassen für ein einfaches Intervall. Mit Ablauf zählt das Intervall-Feld nicht, die Runde dauert so lange wie alle Abschnitte zusammen.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Countdown</legend>
+          <div class="row">
+            <label>Vorlauf vor dem Start
+              <select id="fPre"><option value="0">Aus</option><option value="3">3 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="15">15 s</option><option value="30">30 s</option></select>
+            </label>
+            <label>Letzte Sekunden ansagen
+              <select id="fFinal"><option value="0">Aus</option><option value="3">3 s</option><option value="5">5 s</option><option value="10">10 s</option></select>
+            </label>
+          </div>
+          <label class="toggle"><input type="checkbox" id="fHalf"> „Halbzeit“ in der Mitte jedes Intervalls</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Ansagen</legend>
+          <label>Beim Start
+            <select id="fStart"></select>
+          </label>
+          <label>Bei jeder neuen Runde
+            <select id="fRound"></select>
+          </label>
+          <label>Am Ende
+            <select id="fEnd"></select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Ton</legend>
+          <label class="toggle"><input type="checkbox" id="fVoice"> Sprachansage</label>
+          <label class="toggle"><input type="checkbox" id="fBeep"> Signaltöne</label>
+          <label>Lautstärke <span id="volOut"></span>
+            <input type="range" id="fVol" min="0" max="100" step="5">
+          </label>
+          <p class="hint">Die Ansagen sind KI-generiert: ein Klon der Stimme von Thanh, erzeugt mit Qwen3-TTS. Auf dem iPhone regeln die Gerätetasten die Lautstärke.</p>
+          <div><button class="btn" type="button" id="btnTest">Stimme testen</button></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Als Vorlage speichern</legend>
+          <div class="save">
+            <input type="text" id="fName" placeholder="Name, z. B. Tabata Light" maxlength="40">
+            <button class="btn" type="button" id="btnSave">Speichern</button>
+            <button class="btn" type="button" id="btnDelete" hidden>Vorlage löschen</button>
+          </div>
+          <p class="hint" id="saveMsg">Eigene Vorlagen werden in diesem Browser gespeichert.</p>
+        </fieldset>
+      </form>
+    </div>
+  </section>
+</main>
+<p style="text-align:center;font:500 .75rem var(--f-mono);padding:24px 16px 40px;margin:0"><a href="https://nthanh.de" style="color:var(--gold)">nthanh.de</a> · <a href="https://nthanh.de/impressum" style="color:var(--gold)">Impressum</a> · <a href="https://nthanh.de/datenschutz" style="color:var(--gold)">Datenschutz</a></p>
+
+<script src="stimme/manifest.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const BUILTIN = [
+    // 33 Minuten: jede Minute eine Übung, 11 Durchgänge à Swings → Squats → Burpees
+    { id: 'kb', name: 'Kettlebell EMOM', plate: 'red', interval: 60, rounds: 11, pre: 10, final: 3, half: false,
+      start: 'Los', round: '', end: 'Fertig. Gute Arbeit.',
+      steps: [
+        { name: '20 Swings', dur: 60, say: 'Zwanzig Swings.' },
+        { name: '15 Squats', dur: 60, say: 'Fünfzehn Squats.' },
+        { name: '10 Burpees', dur: 60, say: 'Zehn Burpees.' },
+      ] },
+    { id: 'stretch', name: 'Dehnen', plate: 'green', interval: 120, rounds: 8, pre: 5, final: 5, half: true,
+      start: 'Erste Position', round: 'Wechsel', end: 'Dehnen beendet' },
+    { id: 'hang', name: 'Deadhang', plate: 'blue', interval: 90, rounds: 1, pre: 10, final: 10, half: true,
+      start: 'Los', round: 'Wechsel', end: 'Fertig. Gute Arbeit.',
+      marks: { 60: 'Noch eine Minute.', 30: 'Noch dreißig Sekunden.' } },
+    { id: 'fokus', name: 'Konzentration', plate: 'white', interval: 55 * 60, rounds: 1, pre: 0, final: 0, half: false,
+      start: 'Timer läuft.', round: 'Wechsel', end: 'Zeit für Bewegung. Steh kurz auf.' },
+    { id: 'desk', name: 'Faszien', plate: 'yellow', interval: 5 * 60, rounds: 1, pre: 5, final: 0, half: false,
+      start: 'Los', round: 'Wechsel', end: 'Fertig. Gute Arbeit.',
+      steps: [
+        { name: '36× Arme schwingen', dur: 45, say: 'Sechsunddreißig Mal Arme schwingen. Locker vor und zurück, leicht in die Knie federn.' },
+        { name: '30× auf die Zehen wippen', dur: 30, say: 'Dreißig Mal auf die Zehen wippen.' },
+        { name: '20× Rumpf drehen', dur: 40, say: 'Zwanzig Mal locker drehen. Die Arme schlenkern lassen.' },
+        { name: 'Seitneige links', dur: 22, say: 'Seitneige. Ein Arm über den Kopf, je Seite fünf langsame Züge.' },
+        { name: 'Seitneige rechts', dur: 23, say: 'Seite wechseln.' },
+        { name: 'Brust öffnen', dur: 30, say: 'Brust öffnen. Hände hinter dem Rücken, Schultern nach hinten, halten.' },
+        { name: 'Hüftbeuger links', dur: 30, say: 'Hüftbeuger links. Ausfallschritt, Becken nach vorn schieben.' },
+        { name: 'Hüftbeuger rechts', dur: 30, say: 'Und rechts.' },
+        { name: 'Schultern & Nacken', dur: 30, say: 'Schultern rückwärts kreisen. Dann den Kopf langsam zur Seite neigen.' },
+        { name: 'Ausschütteln', dur: 20, say: 'Ausschütteln. Den ganzen Körper.' },
+      ] },
+  ];
+  const WORDS = ['null','eins','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn','elf','zwölf','dreizehn','vierzehn','fünfzehn','sechzehn','siebzehn','achtzehn','neunzehn','zwanzig'];
+  WORDS[30] = 'dreißig';
+  const STORE = 'taktgeber.v1';
+
+  let store = { custom: [], settings: { voice: true, beep: true }, last: 'kb' };
+  try { const s = JSON.parse(localStorage.getItem(STORE)); if (s) store = { ...store, ...s, settings: { ...store.settings, ...s.settings } }; } catch {}
+  const persist = () => { try { localStorage.setItem(STORE, JSON.stringify(store)); } catch {} };
+
+  const allPresets = () => [...BUILTIN, ...store.custom];
+  let currentId = allPresets().some(p => p.id === store.last) ? store.last : 'kb';
+  let cfg = { ...allPresets().find(p => p.id === currentId) };
+
+  // ---------- Format ----------
+  const fmt = s => {
+    s = Math.max(0, Math.ceil(s - 1e-6));
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+    const p = n => String(n).padStart(2, '0');
+    return h ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
+  };
+  const short = s => s >= 60 && s % 60 === 0 ? `${s / 60} min` : s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`;
+
+  // ---------- Vorlagen ----------
+  // Kurzinfo am Chip: mit Ablauf die Gesamtdauer und Übungszahl, sonst Intervall × Runden
+  function chipInfo(p) {
+    const n = p.steps?.length || 0, R = roundLen(p);
+    if (!p.rounds) return `${short(R)} · endlos`;
+    if (n > 1) return `${short(R * p.rounds)} · ${n} Übungen`;
+    return p.rounds === 1 ? short(R) : `${short(R)} × ${p.rounds}`;
+  }
+  // Auswahllisten der Ansagen: nur eingesprochene Texte (stimme/manifest.js), ohne Zahlen und Countdown-Bausteine
+  const TEXTE = Object.entries(window.TAKTGEBER_TEXTE || {})
+    .filter(([k]) => !/^(zahl|runde|start-in|noch-5)-?/.test(k)).map(([, t]) => t);
+  function fillSelect(id, extra) {
+    const sel = $(id); sel.textContent = '';
+    for (const [v, label] of [['', 'Keine Ansage'], ...extra, ...TEXTE.map(t => [t, t])])
+      sel.appendChild(Object.assign(document.createElement('option'), { value: v, textContent: label }));
+  }
+  fillSelect('fStart', []); fillSelect('fEnd', []);
+  fillSelect('fRound', [['Runde {n}', 'Rundennummer („Runde zwei“ …)']]);
+  // Wert setzen; ein gespeicherter Text ohne Aufnahme bleibt wählbar, ist aber als stumm markiert
+  function setSelect(id, value) {
+    const sel = $(id), n = norm(value || '');
+    const hit = [...sel.options].find(o => o.value === value || (o.value && norm(o.value) === n));
+    if (hit) { sel.value = hit.value; return; }
+    sel.appendChild(Object.assign(document.createElement('option'), { value, textContent: `${value} (ohne Aufnahme, stumm)` }));
+    sel.value = value;
+  }
+  function renderPresets() {
+    const nav = $('presets'); nav.textContent = '';
+    for (const p of allPresets()) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip';
+      b.style.setProperty('--c', `var(--plate-${p.plate || 'blue'})`);
+      b.setAttribute('aria-pressed', String(p.id === currentId));
+      b.innerHTML = `<span class="disc"></span><span></span><small>${chipInfo(p)}</small>`;
+      b.children[1].textContent = p.name;
+      b.disabled = !!run;
+      b.onclick = () => selectPreset(p.id);
+      nav.appendChild(b);
+    }
+  }
+  function selectPreset(id) {
+    currentId = id; store.last = id; persist();
+    cfg = { ...allPresets().find(p => p.id === id) };
+    fillForm(); renderPresets(); renderIdle();
+  }
+  function fillForm() {
+    $('fMin').value = Math.floor(cfg.interval / 60);
+    $('fSec').value = cfg.interval % 60;
+    $('fRounds').value = cfg.rounds;
+    $('fPre').value = cfg.pre; $('fFinal').value = cfg.final; $('fHalf').checked = cfg.half;
+    setSelect('fStart', cfg.start); setSelect('fRound', cfg.round); setSelect('fEnd', cfg.end);
+    $('fSteps').value = (cfg.steps || []).map(s => [s.name, s.dur, s.say].join(' | ')).join('\n');
+    const custom = store.custom.some(p => p.id === cfg.id);
+    $('fName').value = custom ? cfg.name : '';
+    $('btnDelete').hidden = !custom;
+    document.body.dataset.plate = cfg.plate || 'blue';
+    readForm();
+  }
+  function readForm() {
+    const iv = (parseInt($('fMin').value) || 0) * 60 + (parseInt($('fSec').value) || 0);
+    cfg.interval = Math.max(5, iv);
+    cfg.rounds = Math.max(0, parseInt($('fRounds').value) || 0);
+    cfg.pre = +$('fPre').value; cfg.final = +$('fFinal').value; cfg.half = $('fHalf').checked;
+    cfg.start = $('fStart').value; cfg.round = $('fRound').value; cfg.end = $('fEnd').value;
+    const steps = $('fSteps').value.split('\n').map(l => l.split('|').map(x => x.trim()))
+      .filter(p => p[0] && parseInt(p[1]) > 0)
+      .map(([name, dur, ...say]) => ({ name, dur: Math.max(3, parseInt(dur)), say: say.join('|') }));
+    cfg.steps = steps.length ? steps : undefined;
+    $('fMin').disabled = $('fSec').disabled = !!cfg.steps || !!run;
+    const stumm = steps.flatMap(s => s.say.split('|').map(x => x.trim())).filter(t => t && !STIMME[norm(t)]);
+    $('stepsInfo').textContent = cfg.steps
+      ? `${steps.length} Abschnitte, eine Runde dauert ${fmt(roundLen(cfg))}.` + (stumm.length ? ` Ohne Aufnahme, bleibt stumm: ${stumm.map(t => `„${t}“`).join(', ')}.` : '')
+      : 'Leer lassen für ein einfaches Intervall. Mit Ablauf zählt das Intervall-Feld nicht, die Runde dauert so lange wie alle Abschnitte zusammen.';
+  }
+  const stepsOf = c => c.steps || [{ name: '', dur: c.interval, say: '' }];
+  const roundLen = c => stepsOf(c).reduce((a, s) => a + s.dur, 0);
+  $('setup').addEventListener('input', e => { if (e.target.closest('fieldset') && !['fName','fVoice','fBeep','fVol'].includes(e.target.id)) { readForm(); renderIdle(); } });
+  $('setup').addEventListener('submit', e => e.preventDefault());
+
+  $('btnSave').onclick = () => {
+    readForm();
+    const name = $('fName').value.trim();
+    if (!name) { $('saveMsg').textContent = 'Bitte einen Namen eingeben.'; $('fName').focus(); return; }
+    let p = store.custom.find(x => x.name.toLowerCase() === name.toLowerCase());
+    const plates = ['blue', 'red', 'green', 'yellow'];
+    if (!p) { p = { id: 'c' + Date.now(), plate: plates[store.custom.length % 4] }; store.custom.push(p); }
+    Object.assign(p, { ...cfg, id: p.id, plate: p.plate, name });
+    persist(); selectPreset(p.id);
+    $('saveMsg').textContent = `„${name}“ gespeichert.`;
+  };
+  $('btnDelete').onclick = () => {
+    const p = store.custom.find(x => x.id === currentId); if (!p) return;
+    if ($('btnDelete').dataset.armed !== '1') { $('btnDelete').dataset.armed = '1'; $('btnDelete').textContent = 'Wirklich löschen?'; return; }
+    store.custom = store.custom.filter(x => x.id !== currentId);
+    $('btnDelete').dataset.armed = ''; $('btnDelete').textContent = 'Vorlage löschen';
+    $('saveMsg').textContent = `„${p.name}“ gelöscht.`;
+    selectPreset('kb');
+  };
+
+  // ---------- Ton ----------
+  const S = store.settings;
+
+  // Eingesprochene Ansagen (stimme/manifest.js): normalisierter Text → MP3. Texte ohne Aufnahme werden übersprungen.
+  const STIMME = window.TAKTGEBER_STIMME || {};
+  const norm = s => s.toLowerCase().normalize('NFC').replace(/[^a-zäöüß0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/\b\d+\b/g, d => WORDS[+d] || d);
+  const clips = {};
+  const clip = f => clips[f] || (clips[f] = Object.assign(new Audio(f), { preload: 'auto' }));
+  let sayGen = 0, current = null;
+  function hush() {
+    sayGen++;
+    if (current) { current.pause(); current = null; }
+  }
+  // Mehrere Sätze mit „|“ getrennt werden nacheinander gesprochen
+  function speak(text) {
+    if (!S.voice || !text) return;
+    hush();
+    const g = sayGen, queue = text.split('|').map(x => x.trim()).filter(Boolean);
+    const next = () => {
+      if (g !== sayGen) return;
+      const part = queue.shift(); if (!part) return;
+      const f = STIMME[norm(part)];
+      if (!f) return next();
+      const a = clip(f); current = a; a.currentTime = 0; a.volume = S.volume;
+      a.onended = () => { current = null; next(); };
+      a.play().catch(() => { current = null; next(); });
+    };
+    next();
+  }
+  let ac;
+  function audio() { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch {} return ac; }
+  function beep(freq = 880, dur = .12, at = 0) {
+    if (!S.beep || !S.volume || !audio()) return;
+    const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.18 * S.volume, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + .02);
+  }
+  const beepGo = () => beep(1320, .45);
+  const beepEnd = () => { beep(990, .15); beep(990, .15, .2); beep(1320, .5, .4); };
+
+  $('fVoice').checked = S.voice; $('fBeep').checked = S.beep;
+  $('fVoice').onchange = e => { S.voice = e.target.checked; persist(); };
+  $('fBeep').onchange = e => { S.beep = e.target.checked; persist(); };
+  // Lautstärke für Stimme und Signaltöne, auch während des Laufs änderbar
+  if (typeof S.volume !== 'number') S.volume = 1;
+  const showVol = () => $('volOut').textContent = Math.round(S.volume * 100) + ' %';
+  $('fVol').value = Math.round(S.volume * 100); showVol();
+  $('fVol').oninput = e => { S.volume = e.target.value / 100; if (current) current.volume = S.volume; showVol(); persist(); };
+  $('fVol').onchange = () => beep();
+  $('btnTest').onclick = () => { audio(); speak('Drei.|Zwei.|Eins.|Los!'); beepGo(); };
+
+  // ---------- Ablauf ----------
+  let run = null, wakeLock = null;
+  const now = () => performance.now();
+  const elapsed = () => ((run.pausedAt ?? now()) - run.t0 - run.pausedTotal) / 1000;
+  function stateAt(t, c) {
+    const steps = stepsOf(c), R = roundLen(c);
+    if (t < c.pre) return { phase: 'pre', remaining: c.pre - t, round: 0, step: -1, frac: t / c.pre };
+    const u = t - c.pre, r = Math.floor(u / R) + 1;
+    if (c.rounds > 0 && r > c.rounds) return { phase: 'done', remaining: 0, round: c.rounds, step: -1, frac: 1 };
+    let inR = u - (r - 1) * R, i = 0;
+    while (i < steps.length - 1 && inR >= steps[i].dur) { inR -= steps[i].dur; i++; }
+    const d = steps[i].dur;
+    return { phase: 'work', remaining: d - inR, round: r, step: i, frac: inR / d };
+  }
+  const word = n => WORDS[n] || String(n);
+
+  function start() {
+    readForm(); audio();
+    hush(); Object.values(STIMME).forEach(clip);
+    run = { c: { ...cfg }, t0: now(), pausedTotal: 0, pausedAt: null, phase: null, round: -1, sec: -1 };
+    try { navigator.wakeLock?.request('screen').then(l => wakeLock = l).catch(() => {}); } catch {}
+    $('setup').querySelectorAll('input,select,button,textarea').forEach(el => { if (!el.closest('fieldset')?.querySelector('#fVoice')) el.disabled = true; });
+    $('btnStop').hidden = false; $('btnSkip').hidden = false;
+    renderPresets(); tick();
+  }
+  function stop(msg) {
+    run = null;
+    wakeLock?.release?.().catch(() => {}); wakeLock = null;
+    $('setup').querySelectorAll('input,select,button,textarea').forEach(el => el.disabled = false);
+    $('btnStop').hidden = true; $('btnSkip').hidden = true;
+    $('btnStart').textContent = 'Start';
+    readForm(); renderPresets(); renderIdle(msg);
+  }
+  function togglePause() {
+    if (!run) return start();
+    if (run.pausedAt == null) { run.pausedAt = now(); hush(); $('btnStart').textContent = 'Weiter'; $('phase').textContent = 'Pause'; }
+    else { run.pausedTotal += now() - run.pausedAt; run.pausedAt = null; $('btnStart').textContent = 'Pause'; tick(); }
+  }
+  function skip() {
+    if (!run) return;
+    const s = stateAt(elapsed(), run.c);
+    run.t0 -= s.remaining * 1000 - 1;
+    tick();
+  }
+
+  function tick() {
+    if (!run) return;
+    const c = run.c, s = stateAt(elapsed(), c), sec = Math.ceil(s.remaining - 1e-6);
+    if (run.pausedAt == null) {
+      if (s.phase !== run.phase || s.round !== run.round || s.step !== run.step) {
+        if (s.phase === 'pre' && c.pre > 3) speak(`Start in ${word(c.pre)} Sekunden`);
+        if (s.phase === 'work') {
+          const st = stepsOf(c)[s.step], parts = [];
+          if (s.step === 0) {
+            if (s.round === 1) parts.push(c.start);
+            else if (c.rounds > 1 && s.round === c.rounds && /\{n\}/.test(c.round)) parts.push('Letzte Runde!');
+            else parts.push(c.round.replace(/\{n\}/g, s.round));
+          }
+          parts.push(st.say);
+          speak(parts.filter(Boolean).join('|')); beepGo();
+        }
+        if (s.phase === 'done') { speak(c.end); beepEnd(); render(s); stop('Fertig'); return; }
+        run.phase = s.phase; run.round = s.round; run.step = s.step; run.sec = sec;
+      } else if (sec !== run.sec) {
+        run.sec = sec;
+        if (s.phase === 'pre' && sec <= 3 && sec >= 1) { speak(word(sec)); beep(); }
+        if (s.phase === 'work') {
+          const d = stepsOf(c)[s.step].dur;
+          // marks: Ansagen bei fester Restzeit (Sekunden → Text), z. B. Etappen beim Deadhang; count: Zahlen erst ab hier
+          const mark = c.marks?.[sec];
+          if (mark && sec < d) { speak(mark); beep(660, .2); }
+          else if (c.final > 0 && sec <= (c.count || c.final) && sec >= 1 && d > c.final) { speak(word(sec)); beep(); }
+          else if (c.half && !c.steps && sec === Math.floor(d / 2) && d >= 20) { speak('Halbzeit'); beep(660, .2); }
+        }
+      }
+      $('btnStart').textContent = 'Pause';
+    }
+    render(s);
+  }
+
+  function render(s) {
+    const c = run ? run.c : cfg;
+    $('digits').textContent = fmt(s.remaining);
+    $('digits').classList.toggle('pre', s.phase === 'pre');
+    // Letzte Sekunden in Gold, lange Zeiten (mit Stunden) kleiner, damit sie auf das Handy passen
+    $('digits').classList.toggle('final', s.phase === 'work' && c.final > 0 && Math.ceil(s.remaining - 1e-6) <= c.final);
+    $('digits').classList.toggle('lang', $('digits').textContent.length > 5);
+    $('barFill').style.width = (s.phase === 'pre' ? 0 : s.frac * 100) + '%';
+    const steps = stepsOf(c), multi = steps.length > 1;
+    const roundTxt = c.rounds ? `Runde ${s.round} von ${c.rounds}` : `Runde ${s.round}`;
+    $('phase').textContent = run?.pausedAt != null ? 'Pause'
+      : s.phase === 'pre' ? 'Gleich geht’s los'
+      : s.phase === 'work' ? (multi ? steps[s.step].name : roundTxt)
+      : s.phase === 'done' ? 'Fertig' : (multi ? steps[0].name : 'Bereit');
+    // Mit Ablauf zeigen die Striche die Abschnitte der Runde, sonst die Runden
+    if (multi) renderPips(steps.length, s.phase === 'idle' ? 1 : s.phase === 'done' ? steps.length + 1 : s.step + 1);
+    else renderPips(c.rounds, s.phase === 'idle' ? 0 : s.phase === 'done' ? c.rounds + 1 : s.round);
+    const nx = multi && s.phase !== 'done' ? steps[(Math.max(0, s.step) + 1) % steps.length] : null;
+    $('next').innerHTML = nx ? '<span>Als Nächstes:</span> ' : '';
+    if (nx) $('next').append(nx.name);
+    const R = roundLen(c), parts = [];
+    if (multi && s.phase === 'work') parts.push(roundTxt);
+    if (c.rounds) {
+      const total = c.pre + R * c.rounds;
+      const left = s.phase === 'idle' ? total : Math.max(0, total - (run ? elapsed() : 0));
+      parts.push(`Gesamt ${fmt(total)} · noch ${fmt(left)}`);
+    } else {
+      parts.push(multi ? `Runde ${fmt(R)} · läuft bis Stopp` : `Erinnerung alle ${short(c.interval)} · läuft bis Stopp`);
+    }
+    $('meta').textContent = parts.join(' · ');
+  }
+  function renderPips(n, current) {
+    const el = $('pips');
+    if (!n || n > 40) { el.textContent = ''; return; }
+    if (el.childElementCount !== n) { el.textContent = ''; for (let i = 0; i < n; i++) el.appendChild(Object.assign(document.createElement('span'), { className: 'pip' })); }
+    [...el.children].forEach((p, i) => { p.classList.toggle('done', i + 1 < current); p.classList.toggle('akt', i + 1 === current); });
+  }
+  function renderIdle(label) {
+    render({ phase: 'idle', remaining: stepsOf(cfg)[0].dur, round: 0, step: -1, frac: 0 });
+    if (label) $('phase').textContent = label;
+  }
+
+  // Zeitgeber im Worker, damit Ansagen auch bei verdecktem Tab pünktlich bleiben
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),100)'], { type: 'text/javascript' })));
+    w.onmessage = tick;
+  } catch { setInterval(tick, 100); }
+  document.addEventListener('visibilitychange', () => { if (run && document.visibilityState === 'visible') navigator.wakeLock?.request('screen').then(l => wakeLock = l).catch(() => {}); });
+
+  $('btnStart').onclick = togglePause;
+  $('btnStop').onclick = () => { hush(); stop('Gestoppt'); };
+  $('btnSkip').onclick = skip;
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !e.target.closest('input,select,textarea,button')) { e.preventDefault(); togglePause(); }
+  });
+
+  fillForm(); renderPresets(); renderIdle();
+})();
+</script>
+
+</body>
+</html>
