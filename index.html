@@ -251,6 +251,9 @@ code { font: .82em var(--f-mono); background: var(--sand); padding: 1px 5px; }
         { name: 'Schultern & Nacken', dur: 30, say: 'Schultern rückwärts kreisen. Dann den Kopf langsam zur Seite neigen.' },
         { name: 'Ausschütteln', dur: 20, say: 'Ausschütteln. Den ganzen Körper.' },
       ] },
+    // Einfach mitzählen: jede Minute eine neue Runde, bis Stopp (Ansage „Runde zwei“ … „Runde zwanzig“, danach nur Signalton)
+    { id: 'zaehlen', name: 'Runden zählen', plate: 'white', interval: 60, rounds: 0, pre: 5, final: 3, half: false,
+      start: 'Los', round: 'Runde {n}', end: '' },
   ];
   const WORDS = ['null','eins','zwei','drei','vier','fünf','sechs','sieben','acht','neun','zehn','elf','zwölf','dreizehn','vierzehn','fünfzehn','sechzehn','siebzehn','achtzehn','neunzehn','zwanzig'];
   WORDS[30] = 'dreißig';
@@ -531,6 +534,10 @@ code { font: .82em var(--f-mono); background: var(--sand); padding: 1px 5px; }
       const total = c.pre + R * c.rounds;
       const left = s.phase === 'idle' ? total : Math.max(0, total - (run ? elapsed() : 0));
       parts.push(`Gesamt ${fmt(total)} · noch ${fmt(left)}`);
+    } else if (run && s.phase === 'work') {
+      // Endlos: Runde und vergangene Zeit seit dem Start (ohne Vorlauf)
+      if (!multi) parts.push(`Runde ${s.round}`);
+      parts.push(`${fmt(Math.floor(elapsed() - c.pre))} vergangen · läuft bis Stopp`);
     } else {
       parts.push(multi ? `Runde ${fmt(R)} · läuft bis Stopp` : `Erinnerung alle ${short(c.interval)} · läuft bis Stopp`);
     }
